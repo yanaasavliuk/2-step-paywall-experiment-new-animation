@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/stacked-paywall-experiment-two-steps/',
+  base: '/2-step-paywall-experiment-new-animation/',
   plugins: [vue()],
   cacheDir: '/tmp/vite-cache',
   server: {
