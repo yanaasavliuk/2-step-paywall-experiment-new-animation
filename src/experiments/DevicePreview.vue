@@ -113,7 +113,7 @@ const devices: DeviceSpec[] = [
   { id: 'tablet-lg', label: 'Tablet Large', w: 1024, h: 1366 },
 ]
 
-const selectedVariant = ref<'a' | 'b'>('a')
+const selectedVariant = ref<'a' | 'b'>('b')
 const showImage = ref(true)
 const selectedDevice = ref('phone-md')
 const selectedOrientation = ref<'portrait' | 'landscape'>('portrait')

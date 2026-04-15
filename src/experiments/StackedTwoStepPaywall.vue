@@ -1,43 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { getTranslations, type LangCode } from './translations'
-// Separated layers for animation — Diamond & Platinum use Figma SVGs, Gold uses PNGs
-import GemDiamond from '../assets/figma/layers/diamond-gem.svg?url'
-import GemPlatinum from '../assets/figma/layers/platinum-gem.svg?url'
-import GemGold from '../assets/figma/layers/gold-gem.svg?url'
-// Diamond SVG assets from Figma
-import DiamondGlow from '../assets/figma/layers/diamond-glow.svg?url'
-import DiamondShadow from '../assets/figma/layers/diamond-shadow.svg?url'
-import DiamondSparkleBig from '../assets/figma/layers/diamond-sparkle-big.svg?url'
-import DiamondSparkleSmall from '../assets/figma/layers/diamond-sparkle-small.svg?url'
-import DiamondIcon1 from '../assets/figma/layers/diamond-icon1-svg.svg?url'
-import DiamondIcon2 from '../assets/figma/layers/diamond-icon2-svg.svg?url'
-import DiamondIcon3 from '../assets/figma/layers/diamond-icon3-svg.svg?url'
-import DiamondIcon4 from '../assets/figma/layers/diamond-icon4-svg.svg?url'
-// Platinum SVG assets from Figma
-import PlatinumGlow from '../assets/figma/layers/platinum-glow.svg?url'
-import PlatinumShadow from '../assets/figma/layers/platinum-shadow.svg?url'
-import PlatinumSparkleBig from '../assets/figma/layers/platinum-sparkle-big.svg?url'
-import PlatinumSparkleSmall from '../assets/figma/layers/platinum-sparkle-small.svg?url'
-import PlatinumIcon1 from '../assets/figma/layers/platinum-icon1-svg.svg?url'
-import PlatinumIcon2 from '../assets/figma/layers/platinum-icon2-svg.svg?url'
-import PlatinumIcon3 from '../assets/figma/layers/platinum-icon3-svg.svg?url'
-import PlatinumIcon4 from '../assets/figma/layers/platinum-icon4-svg.svg?url'
-// Gold SVG assets from Figma
-import GoldGlow from '../assets/figma/layers/gold-glow.svg?url'
-import GoldShadow from '../assets/figma/layers/gold-shadow.svg?url'
-import GoldSparkleBig from '../assets/figma/layers/gold-sparkle-big.svg?url'
-import GoldSparkleSmall from '../assets/figma/layers/gold-sparkle-small.svg?url'
-import GoldSparkle1 from '../assets/figma/layers/gold-sparkle-1.svg?url'
-import GoldSparkle2 from '../assets/figma/layers/gold-sparkle-2.svg?url'
-import GoldSparkle3 from '../assets/figma/layers/gold-sparkle-3.svg?url'
-import GoldSparkle4 from '../assets/figma/layers/gold-sparkle-4.svg?url'
-import GoldIcon1 from '../assets/figma/layers/gold-icon1-svg.svg?url'
-import GoldIcon2 from '../assets/figma/layers/gold-icon2-svg.svg?url'
-import GoldIcon3 from '../assets/figma/layers/gold-icon3-svg.svg?url'
-import GoldIcon4 from '../assets/figma/layers/gold-icon4-svg.svg?url'
 import { CcButton, CcIcon, CcIconButton } from '@chesscom/design-system'
-import MembershipIcon from './MembershipIcon.vue'
+// Rive file served from /public
+const riveFileUrl = import.meta.env.BASE_URL + 'membership_icons.riv'
 
 type TierType = 'gold' | 'platinum' | 'diamond'
 type BillingType = 'monthly' | 'yearly'
@@ -188,100 +154,202 @@ const selectBilling = (billing: BillingType) => { selectedBilling.value = billin
 const handleCta = () => { emit('selectPlan', { tier: selectedTier.value, billing: selectedBilling.value }) }
 const formatPrice = (price: number) => price.toFixed(2)
 
+// Rive animation icons — uses global `rive` from CDN (v2.27.0)
+// The .riv has artboard "Artboard" with named animations:
+//   membership-diamond, membership-platinum, membership-gold,
+//   membership_static, membership_loop
+declare const rive: any
+const tierToAnimation: Record<string, string> = {
+  diamond: 'membership-diamond',
+  platinum: 'membership-platinum',
+  gold: 'membership-gold',
+}
 
-// Layer images for animation
-const gemImages: Record<TierType, string> = {
-  diamond: GemDiamond,
-  platinum: GemPlatinum,
-  gold: GemGold,
-}
-const iconImages: Record<TierType, string[]> = {
-  diamond: [DiamondIcon1, DiamondIcon2, DiamondIcon3, DiamondIcon4],
-  platinum: [PlatinumIcon1, PlatinumIcon2, PlatinumIcon3, PlatinumIcon4],
-  gold: [GoldIcon1, GoldIcon2, GoldIcon3, GoldIcon4],
-}
-const currentGem = computed(() => gemImages[selectedTier.value])
-const currentIcons = computed(() => iconImages[selectedTier.value])
+const riveCanvasRefs = ref<Record<string, HTMLCanvasElement | null>>({
+  diamond: null,
+  platinum: null,
+  gold: null,
+})
+const riveInstances: Record<string, any> = {}
+const riveReady: Record<string, boolean> = {}
 
-// SVG overlay assets (diamond & platinum have dedicated Figma exports; gold uses CSS fallbacks)
-const glowImages: Record<TierType, string | null> = {
-  diamond: DiamondGlow,
-  platinum: PlatinumGlow,
-  gold: GoldGlow,
+const setRiveCanvas = (tier: string) => (el: any) => {
+  riveCanvasRefs.value[tier] = el as HTMLCanvasElement | null
 }
-const shadowImages: Record<TierType, string | null> = {
-  diamond: DiamondShadow,
-  platinum: PlatinumShadow,
-  gold: GoldShadow,
+
+let riveRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+function initRive(retryCount = 0) {
+  try {
+    if (typeof rive === 'undefined' || !rive.Rive) {
+      if (retryCount < 10) {
+        console.warn(`[Rive] CDN not loaded yet, retry ${retryCount + 1}/10`)
+        riveRetryTimer = setTimeout(() => initRive(retryCount + 1), 200)
+      } else {
+        console.warn('[Rive] CDN failed to load after 10 retries')
+      }
+      return
+    }
+
+    const tiers: TierType[] = ['diamond', 'platinum', 'gold']
+    for (const tier of tiers) {
+      const canvas = riveCanvasRefs.value[tier]
+      if (!canvas || riveInstances[tier]) continue
+
+      const animName = tierToAnimation[tier]
+      console.log(`[Rive] Creating ${tier} with animation "${animName}"`)
+
+      const isSelected = selectedTier.value === tier
+      const anims = isSelected ? [animName, 'membership_loop'] : [animName, 'membership_static']
+
+      riveInstances[tier] = new rive.Rive({
+        src: riveFileUrl,
+        canvas,
+        animations: anims,
+        autoplay: true,
+        onLoad: () => {
+          try {
+            console.log(`[Rive] ✅ Loaded: ${tier} (selected=${isSelected})`)
+            riveInstances[tier]?.resizeDrawingSurfaceToCanvas()
+            riveReady[tier] = true
+          } catch (e) {
+            console.warn(`[Rive] onLoad error for ${tier}:`, e)
+          }
+        },
+        onLoadError: (e: any) => {
+          console.warn(`[Rive] Load error for ${tier}:`, e)
+        },
+      })
+    }
+  } catch (e) {
+    console.warn('[Rive] Init failed:', e)
+  }
 }
-const sparkleBigImages: Record<TierType, string | null> = {
-  diamond: DiamondSparkleBig,
-  platinum: PlatinumSparkleBig,
-  gold: GoldSparkleBig,
+
+function cleanupRive() {
+  if (riveRetryTimer) {
+    clearTimeout(riveRetryTimer)
+    riveRetryTimer = null
+  }
+  for (const tier of Object.keys(riveInstances)) {
+    try { riveInstances[tier]?.cleanup() } catch (_e) { /* noop */ }
+    delete riveInstances[tier]
+    riveReady[tier] = false
+  }
 }
-const sparkleSmallImages: Record<TierType, string | null> = {
-  diamond: DiamondSparkleSmall,
-  platinum: PlatinumSparkleSmall,
-  gold: GoldSparkleSmall,
-}
-const currentGlowSvg = computed(() => glowImages[selectedTier.value])
-const currentShadowSvg = computed(() => shadowImages[selectedTier.value])
-const currentSparkleBig = computed(() => sparkleBigImages[selectedTier.value])
-const currentSparkleSmall = computed(() => sparkleSmallImages[selectedTier.value])
-const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
+
+onMounted(() => {
+  nextTick().then(() => initRive())
+})
+
+watch(currentStep, (step) => {
+  if (step === 1) {
+    cleanupRive()
+    nextTick().then(() => initRive())
+  }
+})
+
+watch(selectedTier, (newTier, oldTier) => {
+  try {
+    // Destroy and recreate the old tier showing static icon
+    if (oldTier && riveInstances[oldTier]) {
+      const canvas = riveCanvasRefs.value[oldTier]
+      try { riveInstances[oldTier].cleanup() } catch(_e) { /* noop */ }
+      delete riveInstances[oldTier]
+      riveReady[oldTier] = false
+      if (canvas) {
+        const oldAnim = tierToAnimation[oldTier]
+        riveInstances[oldTier] = new rive.Rive({
+          src: riveFileUrl,
+          canvas,
+          animations: [oldAnim, 'membership_static'],
+          autoplay: true,
+          onLoad: () => {
+            try {
+              riveInstances[oldTier]?.resizeDrawingSurfaceToCanvas()
+              riveReady[oldTier] = true
+            } catch(_e) { /* noop */ }
+          },
+        })
+      }
+    }
+    // Destroy and recreate the new tier with loop animation
+    if (newTier && riveInstances[newTier]) {
+      const canvas = riveCanvasRefs.value[newTier]
+      try { riveInstances[newTier].cleanup() } catch(_e) { /* noop */ }
+      delete riveInstances[newTier]
+      riveReady[newTier] = false
+      if (canvas) {
+        const newAnim = tierToAnimation[newTier]
+        riveInstances[newTier] = new rive.Rive({
+          src: riveFileUrl,
+          canvas,
+          animations: [newAnim, 'membership_loop'],
+          autoplay: true,
+          onLoad: () => {
+            try {
+              riveInstances[newTier]?.resizeDrawingSurfaceToCanvas()
+              riveReady[newTier] = true
+            } catch(_e) { /* noop */ }
+          },
+        })
+      }
+    }
+  } catch (e) {
+    console.warn('[Rive] Selection animation error:', e)
+  }
+})
+
+onBeforeUnmount(() => {
+  cleanupRive()
+})
 </script>
 
 <template>
   <div class="paywall" :class="{ 'paywall--tablet': isTablet }" :data-step="currentStep" :data-lang="lang" :data-platform="platform" :data-orientation="orientation">
 
+    <!-- iOS Status Bar + Nav (overlaid at top) -->
+    <div v-if="platform === 'ios'" class="ios-status-bar">
+      <div class="ios-status-bar-inner">
+        <span class="ios-time">9:41</span>
+        <div class="ios-dynamic-island" />
+        <div class="ios-status-icons">
+          <!-- Signal bars -->
+          <svg width="17" height="11" viewBox="0 0 17 11" fill="none"><rect x="0" y="7" width="3" height="4" rx="0.5" fill="white"/><rect x="4.5" y="4.5" width="3" height="6.5" rx="0.5" fill="white"/><rect x="9" y="2" width="3" height="9" rx="0.5" fill="white"/><rect x="13.5" y="0" width="3" height="11" rx="0.5" fill="white"/></svg>
+          <!-- WiFi -->
+          <svg width="15" height="12" viewBox="0 0 15 12" fill="none"><path d="M7.5 10.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z" fill="white" transform="translate(0,-2)"/><path d="M4.5 8.5a4.2 4.2 0 0 1 6 0" stroke="white" stroke-width="1.3" stroke-linecap="round"/><path d="M2 5.8a7.5 7.5 0 0 1 11 0" stroke="white" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <!-- Battery -->
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="2" stroke="white" stroke-opacity="0.35"/><rect x="2" y="2" width="18" height="7" rx="1" fill="white"/><path d="M23 4v4a2 2 0 0 0 0-4z" fill="white" fill-opacity="0.4"/></svg>
+        </div>
+      </div>
+    </div>
+
     <!-- ════════════════════════════════════════════════ -->
-    <!-- STEP 1: Plan Selection (shared phone + tablet)  -->
+    <!-- STEP 1: Plan Selection — B1 Design              -->
     <!-- ════════════════════════════════════════════════ -->
     <div v-if="currentStep === 1" class="step-content step-1">
-      <!-- Back Button (outside inner for tablet left-align) -->
-      <nav class="paywall-nav">
-        <CcIconButton
-          :icon="{ name: 'arrow-line-left', variant: 'glyph' }"
-          variant="ghost"
-          size="medium"
-          @click="emit('back')"
-        />
-      </nav>
 
-      <div class="step-1-inner">
+      <!-- Step 1 Header: dark panel with title + green pawn hero -->
+      <div class="step-1-header">
+        <!-- Back Button -->
+        <nav class="paywall-nav step-1-nav">
+          <CcIconButton
+            :icon="{ name: 'arrow-line-left', variant: 'glyph' }"
+            variant="ghost"
+            size="medium"
+            @click="emit('back')"
+          />
+        </nav>
+
         <!-- Title -->
-        <h1 class="paywall-title">{{ currentHeadline }}</h1>
+        <h1 class="paywall-title step-1-title">Choose a plan for after your 7-day free trial</h1>
 
-        <!-- Hero Image — layered animation -->
-        <div v-if="showImage" class="hero-image-container">
-          <div :key="selectedTier" class="hero-anim" :class="`hero-anim--${selectedTier}`">
-            <!-- Layer 0: Glow — Figma SVG for diamond, CSS fallback for others -->
-            <img v-if="currentGlowSvg" :src="currentGlowSvg" alt="" class="hero-glow hero-glow--svg" />
-            <div v-else class="hero-glow" />
-            <!-- Layer 1: Gem — always visible first -->
-            <img :src="currentGem" alt="" class="hero-layer hero-layer--gem" />
-            <!-- Layer 2: Shadow — Figma SVG for diamond, CSS fallback for others -->
-            <img v-if="currentShadowSvg" :src="currentShadowSvg" alt="" class="hero-shadow hero-shadow--svg" />
-            <div v-else class="hero-shadow" />
-            <!-- Layer 3: Icons — appear one by one -->
-            <img :src="currentIcons[0]" alt="" class="hero-layer hero-layer--icon hero-icon--1" />
-            <img :src="currentIcons[1]" alt="" class="hero-layer hero-layer--icon hero-icon--2" />
-            <img :src="currentIcons[2]" alt="" class="hero-layer hero-layer--icon hero-icon--3" />
-            <img :src="currentIcons[3]" alt="" class="hero-layer hero-layer--icon hero-icon--4" />
-            <!-- Layer 4: Sparkles — on gem corners, appear one by one -->
-            <!-- Gold: 4 sparkles -->
-            <template v-if="selectedTier === 'gold'">
-              <img v-for="(src, idx) in goldSparkles" :key="'gs'+idx" :src="src" alt="" class="hero-sparkle-img" :class="`hero-sparkle--${idx + 1}`" />
-            </template>
-            <!-- Diamond & Platinum: 2 sparkles -->
-            <template v-else>
-              <img v-if="currentSparkleBig" :src="currentSparkleBig" alt="" class="hero-sparkle-img hero-sparkle--1" />
-              <img v-if="currentSparkleSmall" :src="currentSparkleSmall" alt="" class="hero-sparkle-img hero-sparkle--2" />
-            </template>
-          </div>
-        </div>
+        <!-- A1 Image: Green Pawn illustration (rebuilt from Figma) -->
+        <div v-if="showImage" class="a1-image" />
+      </div>
 
-        <!-- Plan Cards -->
+      <!-- Plan Cards -->
+      <div class="step-1-body">
         <div class="plan-cards-container">
           <div
             v-for="plan in plansConfig"
@@ -295,9 +363,12 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
             @keydown.space="selectTier(plan.id)"
           >
             <span v-if="plan.id === 'diamond'" class="plan-card-chip">Most popular</span>
-            <div class="plan-card-icon">
-              <MembershipIcon :tier="plan.id" :size="40" />
-            </div>
+            <canvas
+              :ref="setRiveCanvas(plan.id)"
+              width="320"
+              height="320"
+              class="rive-icon-canvas"
+            />
             <div class="plan-card-content">
               <span class="plan-card-title">{{ plan.name }}</span>
               <span class="plan-card-description">{{ plan.description }}</span>
@@ -376,43 +447,48 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
           </div>
         </div>
 
-        <!-- Billing Cards — Variant B (tall, stacked layout) -->
+        <!-- Billing Cards — Variant B (yearly first, monthly second) -->
         <div v-else class="billing-cards-container billing-cards-container--b">
-          <!-- Yearly -->
+          <!-- Yearly (with details) -->
           <div
-            class="billing-card billing-card--b-yearly"
+            class="billing-card"
             :class="{ 'billing-card--selected': selectedBilling === 'yearly' }"
             @click="selectBilling('yearly')"
             role="button" tabindex="0"
           >
-            <div class="billing-card-inner billing-card-inner--b">
-              <span class="billing-card-chip-value">Best Value</span>
-              <span class="billing-card-label-b">{{ t.yearly }}</span>
-              <div class="billing-card-pricing-b">
-                <span class="billing-card-price-old">
-                  ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
-                </span>
-                <span class="billing-card-price-b">
-                  ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
-                </span>
+            <div class="billing-card-inner">
+              <div class="billing-card-left">
+                <span class="billing-card-label">{{ t.yearly }}</span>
                 <span class="billing-card-subtext">
                   billed annually, ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/month
                 </span>
               </div>
+              <div class="billing-card-right">
+                <span class="billing-card-price-old">
+                  ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
+                </span>
+                <span class="billing-card-price">
+                  ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
+                </span>
+              </div>
             </div>
           </div>
-          <!-- Monthly -->
+          <!-- Monthly (compact) -->
           <div
-            class="billing-card billing-card--b-monthly"
+            class="billing-card"
             :class="{ 'billing-card--selected': selectedBilling === 'monthly' }"
             @click="selectBilling('monthly')"
             role="button" tabindex="0"
           >
-            <div class="billing-card-inner billing-card-inner--b">
-              <span class="billing-card-label-b">{{ t.monthly }}</span>
-              <span class="billing-card-price-b">
-                ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
-              </span>
+            <div class="billing-card-inner">
+              <div class="billing-card-left">
+                <span class="billing-card-label">{{ t.monthly }}</span>
+              </div>
+              <div class="billing-card-right">
+                <span class="billing-card-price">
+                  ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -421,7 +497,7 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
         <div v-if="variant === 'a'" class="benefits-card-wrapper">
           <!-- Pill Header -->
           <div class="benefits-pill">
-            <MembershipIcon :tier="selectedTier" :size="12" />
+            <CcIcon :name="`commerce-${selectedTier}`" variant="color" :size="12" />
             <span class="benefits-pill-text">
               Unlimited with <span class="benefits-pill-tier" :class="`benefits-pill-tier--${selectedTier}`">{{ t.tiers[selectedTier] }} Plan:</span>
             </span>
@@ -482,7 +558,7 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: var(--color-gray-900, #262421);
+  background: var(--color-bg-primary, #312e2b);
   color: var(--color-text-boldest, #fff);
   font-family: 'Inter', var(--font-family-system, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   overflow-x: hidden;
@@ -497,11 +573,10 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
   animation: fadeSlide 0.1s cubic-bezier(0, 0, 0.4, 1);
   min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .step-1 { animation-name: slideFromLeft; }
-.step-2 { animation-name: slideFromRight; }
+.step-2 { animation-name: slideFromRight; background: var(--color-bg-opaque, #262421); padding-top: 47px; }
 
 @keyframes slideFromLeft {
   from { opacity: 0; transform: translateX(-20px); }
@@ -543,350 +618,144 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
 }
 
 /* ═══════════════════════════════════════
-   STEP 1: PLAN SELECTION
+   STEP 1: B1 DESIGN — PLAN SELECTION
    ═══════════════════════════════════════ */
 
-/* Center content column — max-width matches Figma "Plans 1" container */
-.step-1-inner {
+/* Step 1 uses full-bleed layout — no side padding on the outer container */
+.step-1 {
+  padding: 0;
+}
+
+/* ═══════════════════════════════════════
+   iOS STATUS BAR
+   ═══════════════════════════════════════ */
+.ios-status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: 47px;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  background: rgba(38, 36, 33, 0.75);
+  overflow: hidden;
+}
+
+.ios-status-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 16px;
+  position: relative;
+}
+
+.ios-time {
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  width: 54px;
+}
+
+.ios-dynamic-island {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 125px;
+  height: 32px;
+  border-radius: 18.5px;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.ios-status-icons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ios-status-icons svg {
+  display: block;
+}
+
+/* Dark header panel */
+.step-1-header {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;
-  max-width: 476px;
-  margin: 0 auto;
-  flex: 1;
+  gap: 24px;
+  background: var(--color-bg-opaque, #262421) url('../assets/background-decoration-new.svg') center bottom / auto no-repeat;
+  padding: 47px 12px 12px 12px;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-/* Hero Image — Frame 238 in Figma: fills parent width, fixed 217px height on phones */
-.hero-image-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  max-width: 280px;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: 8px;
-  overflow: visible;
+/* Landscape: stretch clouds to full width */
+.paywall[data-orientation="landscape"] .step-1-header {
+  background-size: 100% auto;
 }
 
-/* Tablet hero image: constrain illustration size */
-.paywall--tablet .hero-image-container {
-  max-width: 320px;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: -8px;
-}
-
-/* ═══════════════════════════════════════════════════
-   HERO ANIMATION — Layered: Gem → Shadow+Glow → Icons → Sparkles
-   Sequence (~2.2s):
-   1. Gem visible immediately
-   2. Glow fades in behind gem + shadow flows down (0.1–0.7s)
-   3. Icons appear one by one (0.3–1.2s)
-   4. Sparkles twinkle (1.0–1.8s)
-   ═══════════════════════════════════════════════════ */
-.hero-anim {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 291 / 202;
-}
-
-/* Shared layer base */
-.hero-layer {
-  position: absolute;
-  pointer-events: none;
-}
-
-/* Glow — subtle radial behind the gem center (CSS fallback for platinum/gold) */
-.hero-glow {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 42%;
-  width: 60%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%) scale(0.5);
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-  will-change: opacity, transform;
-}
-/* Glow — Figma SVG version (diamond): visible immediately */
-.hero-glow--svg {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 42%;
-  width: 60%;
-  transform: translate(-50%, -50%) scale(1);
-  pointer-events: none;
-  opacity: 0;
-}
-
-/* Gem — centered, sized to match Figma proportions (140/291 ≈ 48%) */
-.hero-layer--gem {
-  z-index: 3;
-  left: 50%;
-  top: 42%;
-  width: 48%;
-  height: auto;
-  transform: translate(-50%, -50%);
-}
-
-/* Shadow — ellipse under the gem, flows downward (CSS fallback for platinum/gold) */
-.hero-shadow {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 60%;
-  width: 46%;
-  height: 16%;
-  transform: translateX(-50%) scaleY(0);
-  transform-origin: center top;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-}
-/* Shadow — Figma SVG version (diamond): bow-tie ray pattern below gem tip */
-.hero-shadow--svg {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 72%;
-  width: 46%;
-  height: auto;
-  border-radius: 0;
-  transform: translate(-50%, -30%);
-  pointer-events: none;
-  opacity: 0;
-  clip-path: inset(0 0 100% 0);
-}
-
-/* Icon layers — start hidden behind gem center, slide outward to final position */
-.hero-layer--icon {
+/* Back button sits at the top of the header panel */
+.step-1-nav {
+  align-self: flex-start;
+  height: 44px;
+  padding: 0;
+  margin-bottom: 0;
   z-index: 2;
-  opacity: 0;
-  will-change: opacity, transform;
+  position: relative;
 }
 
-/* Icon positions + fly-from-diamond offsets — matched to Figma (291×202 frame) */
-/* Each icon starts hidden behind the gem center (~50%, ~38%) and flies outward */
-.hero-icon--1 { left: 6%;  top: 12%;  width: 14%; height: auto; --dx: 180%; --dy: 130%; }
-.hero-icon--2 { left: 2%;  top: 48%;  width: 22%; height: auto; --dx: 150%; --dy: -30%; }
-.hero-icon--3 { left: 80%; top: 12%;  width: 14%; height: auto; --dx: -140%; --dy: 140%; }
-.hero-icon--4 { left: 74%; top: 48%;  width: 22%; height: auto; --dx: -120%; --dy: -30%; }
-
-/* Sparkle container */
-.hero-sparkles {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  pointer-events: none;
+/* ═══════════════════════════════════════
+   STEP 1: TITLE
+   ═══════════════════════════════════════ */
+.step-1-title {
+  position: relative;
+  z-index: 1;
+  max-width: 284px;
+  margin: -8px auto 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 28px;
+  text-align: center;
+  color: #fff;
 }
 
-/* Sparkle — individual SVGs positioned on gem facets to match Figma */
-.hero-sparkle-img {
-  position: absolute;
-  z-index: 4;
-  height: auto;
-  pointer-events: none;
-  opacity: 0;
-  will-change: opacity, transform;
-}
-/* Sparkles positioned at diamond corners */
-/* Top — big sparkle, on the facet intersection */
-.hero-sparkle--1 {
-  left: 52%; top: 23%; width: 9%;
-  transform: scale(0);
-}
-/* Bottom-left corner — small sparkle */
-.hero-sparkle--2 {
-  left: 38%; top: 52%; width: 5%;
-  transform: scale(0);
-}
-.hero-sparkle--3 {
-  left: 28%; top: 60%; width: 6%;
-  transform: scale(0);
-}
-.hero-sparkle--4 {
-  left: 58%; top: 35%; width: 10%;
-  transform: scale(0);
+/* ═══════════════════════════════════════
+   A1 IMAGE — Green pawn illustration
+   Background-image approach: pawn SVG centered,
+   inline SVG stars via the template.
+   Container: 160 × 120 matching Figma.
+   ═══════════════════════════════════════ */
+.a1-image {
+  position: relative;
+  z-index: 1;
+  width: 160px;
+  height: 120px;
+  flex-shrink: 0;
+  margin-top: 8px;
+  background: url('../assets/hero-image-new.svg') no-repeat center center;
+  background-size: contain;
 }
 
-.sparkle {
-  position: absolute;
-  opacity: 0;
-  will-change: opacity, transform;
-}
-
-.sparkle--1 { top: 8%;  left: 52%; width: 6px; height: 6px; }
-.sparkle--2 { top: 4%;  left: 38%; width: 4px; height: 4px; }
-.sparkle--3 { top: 18%; left: 70%; width: 6px; height: 6px; }
-.sparkle--4 { top: 50%; left: 78%; width: 5px; height: 5px; }
-.sparkle--5 { top: 64%; left: 20%; width: 5px; height: 5px; }
-.sparkle--6 { top: 28%; left: 14%; width: 4px; height: 4px; }
-
-/* 4-point star shape */
-.sparkle::before,
-.sparkle::after {
-  content: '';
-  position: absolute;
-  background: inherit;
-  border-radius: 1px;
-}
-.sparkle::before {
+/* Plan cards body area — standard padding */
+.step-1-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 12px 0 12px;
+  flex: 1;
   width: 100%;
-  height: 2px;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-}
-.sparkle::after {
-  width: 2px;
-  height: 100%;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-}
-
-/* ═══════════════ DIAMOND ═══════════════ */
-/* Chess.com motion tokens: ease-out-strong (0,0,0.4,1), standard 200ms / faster 100ms */
-.hero-anim--diamond .hero-glow--svg { top: 38%; animation: glow-appear-subtle 0.2s 0.15s cubic-bezier(0, 0, 0.4, 1) both; }
-.hero-anim--diamond .hero-layer--gem { top: 38%; }
-.hero-anim--diamond .hero-shadow--svg {
-  top: 66%;
-  animation: shadow-svg-reveal 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--diamond .hero-layer--icon {
-  animation: icon-appear 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--diamond .hero-sparkle--1 {
-  left: 52%; top: 18%; width: 9%;
-  animation: sparkle-img-pop 0.1s 0.25s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--diamond .hero-sparkle--2 {
-  left: 36%; top: 39%; width: 5%;
-  animation: sparkle-img-pop 0.1s 0.35s cubic-bezier(0, 0, 0.4, 1) both;
-}
-
-/* ═══════════════ PLATINUM ═══════════════ */
-/* Crown gem is 128x128 (square SVG) — narrower than diamond to match Figma */
-.hero-anim--platinum .hero-layer--gem {
-  width: 44%;
-  top: 40%;
-}
-.hero-anim--platinum .hero-glow--svg {
-  position: absolute; z-index: 0;
-  left: 50%; top: 40%; width: 60%;
-  transform: translate(-50%, -50%) scale(1);
-  pointer-events: none; animation: glow-appear 0.2s 0.15s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--platinum .hero-shadow--svg {
-  top: 55%;
-  width: 59%;
-  transform: translate(-50%, 0%);
-  animation: shadow-svg-reveal 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--platinum .hero-layer--icon {
-  animation: icon-appear 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--platinum .hero-sparkle--1 {
-  left: 33%; top: 28%; width: 5%;
-  animation: sparkle-img-pop 0.1s 0.25s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--platinum .hero-sparkle--2 {
-  left: 65%; top: 48%; width: 3.5%;
-  animation: sparkle-img-pop 0.1s 0.35s cubic-bezier(0, 0, 0.4, 1) both;
-}
-
-/* ═══════════════ GOLD ═══════════════ */
-/* Star gem is 133x111 — slightly wider aspect ratio */
-.hero-anim--gold .hero-layer--gem {
-  width: 46%;
-  top: 41%;
-}
-.hero-anim--gold .hero-glow--svg {
-  position: absolute; z-index: 0;
-  left: 50%; top: 41%; width: 60%;
-  transform: translate(-50%, -50%) scale(1);
-  pointer-events: none; animation: glow-appear 0.2s 0.15s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--gold .hero-shadow--svg {
-  top: 48%;
-  left: 52%;
-  width: 46%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  clip-path: none;
-  animation: gold-shadow-appear 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-.hero-anim--gold .hero-layer--icon {
-  animation: icon-appear 0.2s 0s cubic-bezier(0, 0, 0.4, 1) both;
-}
-/* Gold 4 sparkles — ON the star surface, matching Figma */
-.hero-anim--gold .hero-sparkle--1 { left: 34%; top: 14%; width: 10%; animation: sparkle-img-pop 0.1s 0.25s cubic-bezier(0, 0, 0.4, 1) both; }
-.hero-anim--gold .hero-sparkle--2 { left: 57%; top: 10%; width: 8%;  animation: sparkle-img-pop 0.1s 0.3s cubic-bezier(0, 0, 0.4, 1) both; }
-.hero-anim--gold .hero-sparkle--3 { left: 35%; top: 40%; width: 9%;  animation: sparkle-img-pop 0.1s 0.35s cubic-bezier(0, 0, 0.4, 1) both; }
-.hero-anim--gold .hero-sparkle--4 { left: 49%; top: 15%; width: 18%; rotate: 90deg; animation: sparkle-img-pop 0.1s 0.4s cubic-bezier(0, 0, 0.4, 1) both; }
-
-/* Gold shadow — star silhouette fades in behind gem, no distortion */
-@keyframes gold-shadow-appear {
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-  100% { opacity: 0.45; transform: translate(-50%, -50%) scale(1); }
-}
-
-/* ═══════════════ SHARED KEYFRAMES ═══════════════ */
-
-/* Glow fades in behind gem — subtle, no scale overshoot */
-@keyframes glow-appear {
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-}
-
-/* Shadow flows down from gem base (CSS ellipse fallback for platinum/gold) */
-@keyframes shadow-flow {
-  0%   { opacity: 0; transform: translateX(-50%) scale(0.1); }
-  100% { opacity: 0.8; transform: translateX(-50%) scale(1); }
-}
-
-/* Shadow SVG flows top-to-bottom via clip-path */
-@keyframes shadow-svg-reveal {
-  0%   { opacity: 0; clip-path: inset(0 0 100% 0); }
-  10%  { opacity: 0.85; }
-  100% { opacity: 0.85; clip-path: inset(0 0 0% 0); }
-}
-
-/* Icons fly outward from behind the diamond */
-@keyframes icon-appear {
-  0%   { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.3); }
-  100% { opacity: 1; transform: translate(0, 0) scale(1); }
-}
-
-/* Sparkle twinkle (CSS fallback for platinum/gold) */
-@keyframes sparkle-pop {
-  0%   { opacity: 0; transform: scale(0) rotate(0deg); }
-  30%  { opacity: 1; transform: scale(1.05) rotate(45deg); }
-  60%  { opacity: 0.6; transform: scale(0.7) rotate(90deg); }
-  100% { opacity: 0; transform: scale(0.2) rotate(135deg); }
-}
-
-/* Sparkle SVG image pop-in and stay (diamond) */
-@keyframes sparkle-img-pop {
-  0%   { opacity: 0; transform: scale(0); }
-  50%  { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0.9; transform: scale(1); }
-}
-@keyframes glow-appear-subtle {
-  0%   { opacity: 0; }
-  100% { opacity: 0.45; }
 }
 
 /* Plan Cards */
 .plan-cards-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
   max-width: 476px;
 }
@@ -937,13 +806,12 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
   outline-offset: var(--space-2, 2px);
 }
 
-.plan-card-icon {
+.rive-icon-canvas {
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 64px;
+  height: 64px;
+  margin: -12px;
+  pointer-events: none;
 }
 
 .plan-card-content {
@@ -980,6 +848,14 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
   align-items: center;
   gap: 16px;
   width: 100%;
+}
+
+.step-2-subtitle {
+  font-family: var(--font-family-body, 'Inter', sans-serif);
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: -8px;
 }
 
 .step-2-title-group .paywall-title {
@@ -1048,8 +924,8 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
 .billing-card--selected::after {
   content: '';
   position: absolute;
-  inset: -4px;
-  border: 2px solid var(--color-border-selected, #81b64c);
+  inset: -5px;
+  border: 3px solid var(--color-border-selected, #81b64c);
   border-radius: 14px;
   pointer-events: none;
 }
@@ -1108,7 +984,7 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
 
 /* ─── Variant B billing card overrides ─── */
 .billing-cards-container--b {
-  gap: 16px;
+  gap: 12px;
 }
 
 .billing-card--b-yearly {
@@ -1312,23 +1188,11 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
   align-items: center;
   padding: 24px 12px 16px 12px;
   background: rgba(38, 36, 33, 0.55);
-  backdrop-filter: blur(50px);
-  -webkit-backdrop-filter: blur(50px);
   z-index: 100;
   margin-top: auto;
   position: relative;
 }
 
-.cta-footer::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  height: 32px;
-  background: linear-gradient(to bottom, transparent, rgba(38, 36, 33, 0.55));
-  pointer-events: none;
-}
 
 .cta-footer .cta-buttons {
   display: flex;
@@ -1364,30 +1228,5 @@ const goldSparkles = [GoldSparkle1, GoldSparkle2, GoldSparkle3, GoldSparkle4]
 @media (prefers-reduced-motion: reduce) {
   .step-content { animation: none; }
   .plan-card, .billing-card { transition: none; }
-  .hero-layer--icon,
-  .hero-shadow,
-  .hero-shadow--svg,
-  .hero-glow,
-  .hero-glow--svg,
-  .hero-sparkle-img,
-  .sparkle {
-    animation: none !important;
-  }
-  .hero-layer--icon {
-    opacity: 1 !important;
-  }
-  .hero-sparkle-img {
-    opacity: 0.9 !important;
-    transform: scale(1) !important;
-    transform: scale(1) !important;
-  }
-  .hero-glow {
-    opacity: 1 !important;
-    transform: translate(-50%, -50%) scale(1) !important;
-  }
-  .hero-shadow {
-    opacity: 0.8 !important;
-    transform: translateX(-50%) scaleY(1) !important;
-  }
 }
 </style>

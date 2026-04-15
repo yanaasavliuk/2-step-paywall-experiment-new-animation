@@ -1,52 +1,59 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { Rive, StateMachineInput } from '@rive-app/canvas'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { Rive, Fit, Alignment, Layout } from '@rive-app/canvas'
 
 const props = withDefaults(
   defineProps<{
     tier: 'gold' | 'platinum' | 'diamond'
-    size?: number
+    width?: number
+    height?: number
   }>(),
   {
-    size: 40,
+    width: 192,
+    height: 338,
   }
 )
 
-const canvas = ref<HTMLCanvasElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 let riveInstance: Rive | null = null
-let membershipInput: StateMachineInput | null = null
+let currentTier = ''
 
-function setTier(tier: string) {
-  if (!membershipInput) return
-  // Map tier names to Rive enum values
-  const tierMap: Record<string, number> = {
-    gold: 0,
-    platinum: 1,
-    diamond: 2,
-  }
-  membershipInput.value = tierMap[tier] ?? 2
+function getRiveFile(tier: string): string {
+  if (tier === 'diamond') return 'membership_icons_clean3.riv'
+  return 'membership_icons_diamond.riv'
 }
 
-onMounted(() => {
-  if (!canvas.value) return
+function getAnimations(tier: string): string[] {
+  return ['membership_loop', `membership-${tier}`]
+}
+
+function switchTier(tier: string) {
+  if (!riveInstance || tier === currentTier) return
+  currentTier = tier
+  riveInstance.stop()
+  riveInstance.play(getAnimations(tier))
+}
+
+onMounted(async () => {
+  if (!canvasRef.value) return
+
+  const base = import.meta.env.BASE_URL
+  const response = await fetch(`${base}${getRiveFile(props.tier)}`)
+  const buffer = await response.arrayBuffer()
 
   riveInstance = new Rive({
-    src: '/membership_icons.riv',
-    canvas: canvas.value,
+    buffer,
+    canvas: canvasRef.value,
     autoplay: true,
-    stateMachines: 'State Machine 1',
+    animations: getAnimations(props.tier),
+    enableRiveAssetCDN: true,
+    layout: new Layout({
+      fit: Fit.Contain,
+      alignment: Alignment.Center,
+    }),
     onLoad: () => {
-      // Try to find the membership-type input
-      if (riveInstance) {
-        const inputs = riveInstance.stateMachineInputs('State Machine 1')
-        if (inputs) {
-          membershipInput = inputs.find(
-            (i) => i.name === 'membership-type'
-          ) || null
-          setTier(props.tier)
-        }
-        riveInstance.resizeDrawingSurfaceToCanvas()
-      }
+      currentTier = props.tier
+      riveInstance?.resizeDrawingSurfaceToCanvas()
     },
   })
 })
@@ -54,11 +61,11 @@ onMounted(() => {
 watch(
   () => props.tier,
   (newTier) => {
-    setTier(newTier)
+    switchTier(newTier)
   }
 )
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
   if (riveInstance) {
     riveInstance.cleanup()
     riveInstance = null
@@ -68,9 +75,9 @@ onUnmounted(() => {
 
 <template>
   <canvas
-    ref="canvas"
-    :width="size * 2"
-    :height="size * 2"
-    :style="{ width: size + 'px', height: size + 'px' }"
+    ref="canvasRef"
+    :width="width * 2"
+    :height="height * 2"
+    :style="{ width: width + 'px', height: height + 'px', background: 'transparent' }"
   />
 </template>
