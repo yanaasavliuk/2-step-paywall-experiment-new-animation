@@ -758,6 +758,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   width: 100%;
   max-width: 476px;
+  padding-top: 14px;
 }
 
 .plan-card {
