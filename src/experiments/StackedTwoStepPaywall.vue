@@ -755,10 +755,9 @@ onBeforeUnmount(() => {
 .plan-cards-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   max-width: 476px;
-  padding-top: 14px;
 }
 
 .plan-card {
