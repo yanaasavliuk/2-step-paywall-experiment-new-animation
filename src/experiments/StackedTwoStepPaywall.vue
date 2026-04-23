@@ -421,16 +421,20 @@ onBeforeUnmount(() => {
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
-                <span class="billing-card-subtext-row">
+                <span v-if="platform === 'android'" class="billing-card-subtext-row">
                   12 months &bull; ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }}
+                </span>
+                <span v-else class="billing-card-subtext">
+                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/month
                 </span>
               </div>
               <div class="billing-card-right">
                 <span class="billing-card-price-old">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
-                <span class="billing-card-price billing-card-price--blue">
-                  ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
+                <span class="billing-card-price" :class="{ 'billing-card-price--blue': platform === 'android' }">
+                  <template v-if="platform === 'android'">${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month</template>
+                  <template v-else>${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year</template>
                 </span>
               </div>
             </div>
@@ -447,7 +451,7 @@ onBeforeUnmount(() => {
                 <span class="billing-card-label">{{ t.monthly }}</span>
               </div>
               <div class="billing-card-right">
-                <span class="billing-card-price billing-card-price--blue">
+                <span class="billing-card-price" :class="{ 'billing-card-price--blue': platform === 'android' }">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
               </div>
@@ -468,16 +472,20 @@ onBeforeUnmount(() => {
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
-                <span class="billing-card-subtext-row">
+                <span v-if="platform === 'android'" class="billing-card-subtext-row">
                   12 months &bull; ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }}
+                </span>
+                <span v-else class="billing-card-subtext">
+                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/month
                 </span>
               </div>
               <div class="billing-card-right">
                 <span class="billing-card-price-old">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
-                <span class="billing-card-price billing-card-price--blue">
-                  ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
+                <span class="billing-card-price" :class="{ 'billing-card-price--blue': platform === 'android' }">
+                  <template v-if="platform === 'android'">${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month</template>
+                  <template v-else>${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year</template>
                 </span>
               </div>
             </div>
@@ -494,7 +502,7 @@ onBeforeUnmount(() => {
                 <span class="billing-card-label">{{ t.monthly }}</span>
               </div>
               <div class="billing-card-right">
-                <span class="billing-card-price billing-card-price--blue">
+                <span class="billing-card-price" :class="{ 'billing-card-price--blue': platform === 'android' }">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
               </div>
@@ -970,7 +978,7 @@ onBeforeUnmount(() => {
 .billing-card-left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
   justify-content: center;
   min-height: 48px;
 }
@@ -979,11 +987,19 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 12px;
   justify-content: center;
   min-height: 48px;
   text-align: center;
   white-space: nowrap;
+}
+
+.paywall[data-platform="android"] .billing-card-left {
+  gap: 4px;
+}
+
+.paywall[data-platform="android"] .billing-card-right {
+  gap: 4px;
 }
 
 .billing-card-label {
