@@ -1200,6 +1200,7 @@ onBeforeUnmount(() => {
   width: 16px;
   height: 16px;
   color: rgba(255, 255, 255, 0.72);
+  margin-right: 4px;
 }
 
 .benefit-item-check--diamond {
