@@ -1074,7 +1074,7 @@ onBeforeUnmount(() => {
   font-size: 17px;
   font-weight: 700;
   line-height: 20px;
-  color: var(--color-text-default, rgba(255, 255, 255, 0.72));
+  color: var(--color-text-bolder, rgba(255, 255, 255, 0.85));
 }
 
 /* ─── Variant B billing card overrides ─── */
