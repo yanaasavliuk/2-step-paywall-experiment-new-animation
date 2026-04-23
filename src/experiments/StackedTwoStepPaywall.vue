@@ -994,12 +994,42 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.paywall[data-platform="android"] .billing-card-left {
+.paywall[data-platform="android"] .billing-card-inner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
   gap: 4px;
+  align-items: baseline;
+}
+
+.paywall[data-platform="android"] .billing-card-left {
+  display: contents;
 }
 
 .paywall[data-platform="android"] .billing-card-right {
-  gap: 4px;
+  display: contents;
+}
+
+.paywall[data-platform="android"] .billing-card-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.paywall[data-platform="android"] .billing-card-subtext-row {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.paywall[data-platform="android"] .billing-card-price-old {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
+}
+
+.paywall[data-platform="android"] .billing-card-price {
+  grid-column: 2;
+  grid-row: 2;
+  text-align: right;
 }
 
 .billing-card-label {
