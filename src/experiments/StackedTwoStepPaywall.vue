@@ -994,7 +994,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.paywall[data-platform="android"] .billing-card-inner {
+.paywall[data-platform="android"] .billing-card-inner:has(.billing-card-subtext-row) {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
@@ -1002,11 +1002,11 @@ onBeforeUnmount(() => {
   align-items: baseline;
 }
 
-.paywall[data-platform="android"] .billing-card-left {
+.paywall[data-platform="android"] .billing-card-inner:has(.billing-card-subtext-row) .billing-card-left {
   display: contents;
 }
 
-.paywall[data-platform="android"] .billing-card-right {
+.paywall[data-platform="android"] .billing-card-inner:has(.billing-card-subtext-row) .billing-card-right {
   display: contents;
 }
 
@@ -1074,7 +1074,7 @@ onBeforeUnmount(() => {
   font-size: 17px;
   font-weight: 700;
   line-height: 20px;
-  color: var(--color-text-boldest, #fff);
+  color: var(--color-text-default, rgba(255, 255, 255, 0.72));
 }
 
 /* ─── Variant B billing card overrides ─── */
