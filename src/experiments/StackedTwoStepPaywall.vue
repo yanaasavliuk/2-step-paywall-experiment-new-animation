@@ -524,7 +524,7 @@ onBeforeUnmount(() => {
                 <CcIcon :name="feature.icon" variant="glyph" :size="16" />
               </div>
               <span class="benefit-item-name">{{ featureLabel(feature.id) }}</span>
-              <div class="benefit-item-check">
+              <div class="benefit-item-check" :class="{ 'benefit-item-check--diamond': hasFeature(feature.id) && selectedTier === 'diamond' }">
                 <CcIcon v-if="hasFeature(feature.id)" name="mark-check" variant="glyph" :size="16" />
                 <CcIcon v-else name="mark-cross" variant="glyph" :size="16" />
               </div>
@@ -1200,6 +1200,10 @@ onBeforeUnmount(() => {
   width: 16px;
   height: 16px;
   color: rgba(255, 255, 255, 0.72);
+}
+
+.benefit-item-check--diamond {
+  color: var(--color-blue-200, #009FD9);
 }
 
 .benefit-item--disabled .benefit-item-check {
