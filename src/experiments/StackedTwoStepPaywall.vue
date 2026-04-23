@@ -1203,7 +1203,7 @@ onBeforeUnmount(() => {
 }
 
 .benefit-item-check--diamond {
-  color: var(--color-blue-200, #009FD9);
+  color: var(--color-blue-100, #4DC3EA);
 }
 
 .benefit-item--disabled .benefit-item-check {
