@@ -421,15 +421,15 @@ onBeforeUnmount(() => {
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
-                <span class="billing-card-subtext">
-                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
+                <span class="billing-card-subtext-row">
+                  12 months &bull; ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }}
                 </span>
               </div>
               <div class="billing-card-right">
                 <span class="billing-card-price-old">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
-                <span class="billing-card-price">
+                <span class="billing-card-price billing-card-price--blue">
                   ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
                 </span>
               </div>
@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
                 <span class="billing-card-label">{{ t.monthly }}</span>
               </div>
               <div class="billing-card-right">
-                <span class="billing-card-price">
+                <span class="billing-card-price billing-card-price--blue">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
               </div>
@@ -468,15 +468,15 @@ onBeforeUnmount(() => {
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
-                <span class="billing-card-subtext">
-                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
+                <span class="billing-card-subtext-row">
+                  12 months &bull; ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }}
                 </span>
               </div>
               <div class="billing-card-right">
                 <span class="billing-card-price-old">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
-                <span class="billing-card-price">
+                <span class="billing-card-price billing-card-price--blue">
                   ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
                 </span>
               </div>
@@ -494,7 +494,7 @@ onBeforeUnmount(() => {
                 <span class="billing-card-label">{{ t.monthly }}</span>
               </div>
               <div class="billing-card-right">
-                <span class="billing-card-price">
+                <span class="billing-card-price billing-card-price--blue">
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
               </div>
@@ -551,6 +551,14 @@ onBeforeUnmount(() => {
           @click="currentStep === 1 ? goToStep2() : handleCta()"
         />
       </div>
+      <p v-if="currentStep === 2 && platform === 'android'" class="cta-disclaimer">
+        <template v-if="selectedBilling === 'yearly'">
+          You will be charged ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} per year (${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/mo). You may cancel anytime in Google Play.
+        </template>
+        <template v-else>
+          You will be charged ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} per month. You may cancel anytime in Google Play.
+        </template>
+      </p>
       <div class="cta-home-indicator">
         <div class="cta-home-indicator-pill" />
       </div>
@@ -1011,6 +1019,18 @@ onBeforeUnmount(() => {
   text-decoration: line-through;
 }
 
+.billing-card-price--blue {
+  color: var(--color-blue-200, #009FD9);
+}
+
+.billing-card-subtext-row {
+  font-family: var(--font-family-heading, 'Chess Sans', sans-serif);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--color-text-boldest, #fff);
+}
+
 /* ─── Variant B billing card overrides ─── */
 .billing-cards-container--b {
   gap: 12px;
@@ -1233,6 +1253,18 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   width: 100%;
+  max-width: 500px;
+}
+
+.cta-disclaimer {
+  font-family: var(--font-family-body, 'Inter', sans-serif);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  padding: 8px 12px 0;
+  margin: 0;
   max-width: 500px;
 }
 
