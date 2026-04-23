@@ -970,7 +970,7 @@ onBeforeUnmount(() => {
 .billing-card-left {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
   justify-content: center;
   min-height: 48px;
 }
@@ -979,7 +979,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 12px;
+  gap: 4px;
   justify-content: center;
   min-height: 48px;
   text-align: center;
