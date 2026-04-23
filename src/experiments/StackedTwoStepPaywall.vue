@@ -98,8 +98,8 @@ const baseFeatures = [
 ] as const
 
 const diamondFeatures = [
-  { id: 'moveExplanations', icon: 'move-circle-brilliant', color: '#48B088' },
   { id: 'gameReview', icon: 'move-circle-best', color: '#81B64C' },
+  { id: 'moveExplanations', icon: 'move-circle-brilliant', color: '#48B088' },
   { id: 'insights', icon: 'device-bulb-glow', color: '#F5C342' },
   { id: 'puzzles', icon: 'game-type-puzzle', color: '#E8833A' },
   { id: 'lessons', icon: 'game-lesson', color: '#48A8B5' },
@@ -153,6 +153,13 @@ const selectTier = (tier: TierType) => { selectedTier.value = tier }
 const selectBilling = (billing: BillingType) => { selectedBilling.value = billing }
 const handleCta = () => { emit('selectPlan', { tier: selectedTier.value, billing: selectedBilling.value }) }
 const formatPrice = (price: number) => price.toFixed(2)
+
+// Calculate yearly savings percentage vs monthly
+const yearlySavingsPercent = computed(() => {
+  const monthly = pricing[selectedTier.value].monthly.monthlyRate
+  const yearlyMonthly = pricing[selectedTier.value].yearly.monthlyRate
+  return Math.round(((monthly - yearlyMonthly) / monthly) * 100)
+})
 
 // Rive animation icons — uses global `rive` from CDN (v2.27.0)
 // The .riv has artboard "Artboard" with named animations:
@@ -410,11 +417,12 @@ onBeforeUnmount(() => {
             @click="selectBilling('yearly')"
             role="button" tabindex="0"
           >
+            <span class="billing-card-chip">Save {{ yearlySavingsPercent }}%</span>
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
                 <span class="billing-card-subtext">
-                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/month
+                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
                 </span>
               </div>
               <div class="billing-card-right">
@@ -422,7 +430,7 @@ onBeforeUnmount(() => {
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
                 <span class="billing-card-price">
-                  ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
+                  ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
                 </span>
               </div>
             </div>
@@ -456,11 +464,12 @@ onBeforeUnmount(() => {
             @click="selectBilling('yearly')"
             role="button" tabindex="0"
           >
+            <span class="billing-card-chip">Save {{ yearlySavingsPercent }}%</span>
             <div class="billing-card-inner">
               <div class="billing-card-left">
                 <span class="billing-card-label">{{ t.yearly }}</span>
                 <span class="billing-card-subtext">
-                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }}/month
+                  billed annually, ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
                 </span>
               </div>
               <div class="billing-card-right">
@@ -468,7 +477,7 @@ onBeforeUnmount(() => {
                   ${{ formatPrice(pricing[selectedTier].monthly.monthlyRate) }} / month
                 </span>
                 <span class="billing-card-price">
-                  ${{ formatPrice(pricing[selectedTier].yearly.annualTotal) }} / year
+                  ${{ formatPrice(pricing[selectedTier].yearly.monthlyRate) }} / month
                 </span>
               </div>
             </div>
@@ -928,6 +937,26 @@ onBeforeUnmount(() => {
   border: 3px solid var(--color-border-selected, #81b64c);
   border-radius: 14px;
   pointer-events: none;
+}
+
+.billing-card-chip {
+  position: absolute;
+  top: -13px;
+  left: 24px;
+  padding: 2px 4px;
+  background: var(--color-border-selected, #81b64c);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  line-height: 15px;
+  min-height: 19px;
+  display: flex;
+  align-items: center;
+  text-shadow: 0px 1px 0px rgba(0, 0, 0, 0.2);
+  z-index: 1;
 }
 
 .billing-card-left {
